@@ -1,47 +1,164 @@
+import tkinter as tk
 import math
 import numpy as np
+
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
+import matplotlib.patches as patches
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+
+
+#Simulation Constants
 
 g=9.8
-l=1
-theta_0 = math.pi/4
-omega_0 = 0
-h = 0.02
+h = 0.01
 
-time = np.arange(0,30,h)
 
-theta = np.zeros(len(time))
-omega = np.zeros(len(time))
-theta[0] = theta_0
-omega[0] = omega_0
+#Current state dict to store positions
 
-for i in range (len(time)-1):
-    theta[i+1] = theta[i] + (h*omega[i])
-    omega[i+1] = omega[i] - (g*h/l)*math.sin(theta[i+1])
+current_state = {
+    "l":1, "Q":0, "w": 0
+}
 
-x = l*np.sin(theta)
-y = -l*np.cos(theta)
 
-FFMpegWriter = manimation.writers['ffmpeg']
-metadata = dict(title='Simple Pendulum', artist='Saif',
-                comment='Pendulum simulation')
-writer = FFMpegWriter(fps=50, metadata=metadata)
+#Defining frame
 
-fig,ax = plt.subplots()
-ax.set_xlim(-1.2,1.2)
-ax.set_ylim(-1.2,1.2)
-ax.grid(True)
+
+root = tk.Tk()
+root.title("Simple Pendulum")
+root.geometry("800x1000")
+
+root.columnconfigure(0, weight = 1)
+root.rowconfigure(0, weight =1)
+
+frame = tk. Frame(root)
+frame.grid(row=0, column=0, sticky = "nsew")
+
+#Livesim widget
+
+fig, ax = plt.subplots(figsize=(5, 5))
+ax.set_facecolor('black')
+canvas = FigureCanvasTkAgg(fig, master=frame)
+canvas_widget = canvas.get_tk_widget()
+canvas_widget.grid(row=0, column=1, rowspan = 10, columnspan=10, sticky="nsew")
+frame.columnconfigure(1, weight=1)
+
+ax.set_xlim(-1.5, 1.5)
+ax.set_ylim(-1.5, 0.5)
 ax.set_aspect('equal')
 
 
-red_circle, = ax.plot([], [], 'ro', markersize = 20)
-blue_line, = ax.plot([], [], lw=2)
 
-with writer.saving(fig, "Simple_Pendulum.mp4", 100):
-    for i in range(len(time)):
-        x0 = x[i]
-        y0 = y[i]
-        red_circle.set_data([x0], [y0])
-        blue_line.set_data([0,x0],[0,y0])
-        writer.grab_frame()
+
+
+#methods
+
+def submit_values():
+    try:
+        for field_name, entry_box in entry_boxes.items():
+            val = float(entry_box.get())
+            current_state[field_name] = val
+    except Exception:
+        print("Please enter valid numerical values.")
+        return False
+    
+    if current_state["l"] <= 0:
+        print("Length must be positive.")
+        return False
+    else:
+        return True
+
+
+def on_entry_click(event,entry, placeholder):
+    if entry.get() == placeholder:
+        entry.delete(0, tk.END)
+        entry.insert(0, '')
+        entry.config(fg='black') # Change text to black when typing
+
+def on_focusout(event, entry, placeholder):
+    """Function that restores placeholder if box is left empty"""
+    if entry.get() == '':
+        entry.insert(0, placeholder)
+        entry.config(fg='grey')
+
+def evaluate():
+
+    l = current_state["l"]
+
+    current_state["Q"] = current_state["Q"] + (h*current_state["w"])
+    current_state["w"] = current_state["w"] - (g*h/l)*math.sin(current_state["Q"])
+
+
+
+def update(frame):
+
+    l = current_state["l"]
+
+    evaluate()
+    body.center = (l*np.sin(current_state["Q"]), -l*np.cos(current_state["Q"]))
+    line.set_data([0, l*np.sin(current_state["Q"])], [0, -l*np.cos(current_state["Q"])])
+    return body, line
+
+def start_simulation():
+
+    
+
+    if submit_values():
+        l = current_state["l"]
+        body.center = (l*np.sin(current_state["Q"]), -l*np.cos(current_state["Q"]))
+        line.set_data([0, l*np.sin(current_state["Q"])], [0, -l*np.cos(current_state["Q"])])
+        limits = l*1.2
+        body.set_radius(0.15*limits)
+        ax.set_xlim(-limits, limits)
+        ax.set_ylim(-limits, limits)
+
+
+def run_animation():
+    global anim
+    if 'anim' in globals() and anim is not None:
+        anim.event_source.stop()  # Stop the previous animation if it exists
+    anim = manimation.FuncAnimation(fig, update, frames=None, interval = 10, blit=True, cache_frame_data=False)
+    canvas.draw()
+
+
+#Creating boxes and labels
+
+fields = [
+    ("l", "length of pendulum (m)", 1,0),
+    ("Q", "Angle with vertical (rad)", 3,0),
+    ("w", "Initial velocity (rad/s)", 5,0),
+]
+
+body = patches.Circle((current_state["l"]*np.sin(current_state["Q"]), -current_state["l"]*np.cos(current_state["Q"])), 0, color='blue')
+ax.add_patch(body)
+
+line, = ax.plot([], [], lw=2)
+
+entry_boxes = {}
+for field_name, placeholder, row, col in fields:
+
+    label = tk.Label(frame, text=f"{placeholder}:")
+    label.grid(row = row -1, column = col, padx = 1, pady = 10)
+
+
+
+    entry_box = tk.Entry(frame, fg='grey')
+    entry_box.insert(0, placeholder)
+    entry_box.grid(row=row, column=col, padx=10, pady=10)
+    entry_box.bind('<FocusIn>', lambda event, ent = entry_box, ph=placeholder: on_entry_click(event, ent, ph))
+    entry_box.bind('<FocusOut>', lambda event, ent = entry_box, ph=placeholder: on_focusout(event, ent, ph))
+
+    entry_boxes[field_name] = entry_box
+
+
+submit = tk.Button(frame, text="Start Simulation", command=lambda: [start_simulation(), run_animation()])
+submit.grid(row=6, column=0, pady=20)
+
+
+
+root.protocol("WM_DELETE_WINDOW", lambda: (root.quit(), root.destroy(), exit()))
+
+root.mainloop()
